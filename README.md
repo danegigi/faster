@@ -577,7 +577,7 @@ Create run script ("run-server.sh") in your application folder with the content:
 
 ```
 #!/bin/bash
-/home/ubuntu/.deno/bin/deno run --allow-net --allow-read --allow-write /home/ubuntu/my-deno-app/app.ts
+/home/ubuntu/.deno/bin/deno run --allow-all /home/ubuntu/my-deno-app/app.ts
 ```
 
 Give permission to the script:

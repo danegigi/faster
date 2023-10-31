@@ -233,7 +233,7 @@ rateLimit({
   attempts: 30,
   interval: 10,
   maxTableSize: 100000,
-  id: (ctx: Context) => JSON.stringify(ctx.conn.remoteAddr),
+  id: (ctx: Context) => JSON.stringify(ctx.info.remoteAddr),
 });
 ```
 

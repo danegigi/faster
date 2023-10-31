@@ -19,9 +19,7 @@ export type ContextResponse = {
 };
 
 export class Context {
-  #conn: Deno.Conn;
-  #httpConn: Deno.HttpConn;
-  #requestEvent: Deno.RequestEvent;
+  #info: Deno.ServeHandlerInfo;
   #params: Params;
   #url: URL;
   req: Request;
@@ -30,17 +28,13 @@ export class Context {
   error: Error | undefined = undefined;
   #postProcessors: Set<ProcessorFunc> = new Set();
   constructor(
-    conn: Deno.Conn,
-    httpConn: Deno.HttpConn,
-    requestEvent: Deno.RequestEvent,
+    info: Deno.ServeHandlerInfo,
     params: Params,
     url: URL,
     req: Request,
     hasRoute: boolean,
   ) {
-    this.#conn = conn;
-    this.#httpConn = httpConn;
-    this.#requestEvent = requestEvent;
+    this.#info = info;
     this.#params = params;
     this.#url = url;
     this.req = req;
@@ -52,14 +46,8 @@ export class Context {
     status: 200,
     statusText: "",
   };
-  get conn() {
-    return this.#conn;
-  }
-  get httpConn() {
-    return this.#httpConn;
-  }
-  get requestEvent() {
-    return this.#requestEvent;
+  get info() {
+    return this.#info;
   }
   get params() {
     return this.#params;
@@ -101,11 +89,13 @@ export function parse(
   while (tmp = arr.shift()) {
     c = tmp[0];
     if (c === "*") {
+      //@ts-ignore
       keys.push("wild");
       pattern += "/(.*)";
     } else if (c === ":") {
       o = tmp.indexOf("?", 1);
       ext = tmp.indexOf(".", 1);
+      //@ts-ignore
       keys.push(tmp.substring(1, !!~o ? o : !!~ext ? ext : tmp.length));
       pattern += !!~o && !~ext ? "(?:/([^/]+?))?" : "/([^/]+?)";
       if (!!~ext) pattern += (!!~o ? "?" : "") + "\\" + tmp.substring(ext);
@@ -148,6 +138,7 @@ export type Route = {
 export class Server {
   // NOTE: This is transpiled into the constructor, therefore equivalent to this.routes = [];
   #routes: Route[] = [];
+  #server: Server;
 
   // NOTE: Using .bind can significantly increase perf compared to arrow functions.
   public all = this.#add.bind(this, "ALL");
@@ -201,97 +192,78 @@ export class Server {
     }
   }
 
-  async #handleRequest(conn: Deno.Conn) {
+  async #serverHandler(request: Request, info: Deno.ServeHandlerInfo) {
     try {
-      const httpConn = Deno.serveHttp(conn);
-      for await (const requestEvent of httpConn) {
-        const req = requestEvent.request;
-        const url = new URL(requestEvent.request.url);
-        const requestHandlers: RouteFn[] = [];
-        const params: Params = {};
-        const len = this.#routes.length;
-        var hasRoute = false;
-        for (var i = 0; i < len; i++) {
-          const r = this.#routes[i];
-          const keyLength = r.keys.length;
-          var matches: null | string[] = null;
-          if (
-            r.pattern === undefined ||
-            (req.method === r.method &&
-              (matches = r.pattern.exec(
-                url.pathname,
-              )))
-          ) {
-            if (r.pattern) {
-              hasRoute = true;
-              if (keyLength > 0) {
-                if (matches) {
-                  var inc = 0;
-                  while (inc < keyLength) {
-                    params[r.keys[inc]] = decodeURIComponent(matches[++inc]);
-                  }
+      const req = request;
+      const url = new URL(request.url);
+      const requestHandlers: RouteFn[] = [];
+      const params: Params = {};
+      const len = this.#routes.length;
+      var hasRoute = false;
+      for (var i = 0; i < len; i++) {
+        const r = this.#routes[i];
+        const keyLength = r.keys.length;
+        var matches: null | string[] = null;
+        if (
+          r.pattern === undefined ||
+          (req.method === r.method &&
+            (matches = r.pattern.exec(
+              url.pathname,
+            )))
+        ) {
+          if (r.pattern) {
+            hasRoute = true;
+            if (keyLength > 0) {
+              if (matches) {
+                var inc = 0;
+                while (inc < keyLength) {
+                  params[r.keys[inc]] = decodeURIComponent(matches[++inc]);
                 }
               }
             }
-            requestHandlers.push(...r.handlers);
           }
+          requestHandlers.push(...r.handlers);
         }
-        var ctx = new Context(
-          conn,
-          httpConn,
-          requestEvent,
-          params,
-          url,
-          req,
-          hasRoute,
-        );
-        await this.#middlewareHandler(requestHandlers, 0, ctx);
-        if (!ctx.error) {
-          try {
-            for (const p of ctx.postProcessors) {
-              await p(ctx);
-            }
-          } catch (e) {
-            ctx.error = e;
-          }
-        }
-        if (ctx.error) {
-          ctx.res.status = 500;
-          ctx.res.headers.set(
-            "Content-Type",
-            "application/json",
-          );
-          ctx.res.body = JSON.stringify({
-            msg: (ctx.error.message || ctx.error),
-            stack: ctx.error.stack,
-          });
-        }
-        await requestEvent.respondWith(
-          new Response(ctx.res.body, {
-            headers: ctx.res.headers,
-            status: ctx.res.status,
-            statusText: ctx.res.statusText,
-          }),
-        );
       }
+      var ctx = new Context(
+        info,
+        params,
+        url,
+        req,
+        hasRoute,
+      );
+      await this.#middlewareHandler(requestHandlers, 0, ctx);
+      if (!ctx.error) {
+        try {
+          for (const p of ctx.postProcessors) {
+            await p(ctx);
+          }
+        } catch (e) {
+          ctx.error = e;
+        }
+      }
+      if (ctx.error) {
+        ctx.res.status = 500;
+        ctx.res.headers.set(
+          "Content-Type",
+          "application/json",
+        );
+        ctx.res.body = JSON.stringify({
+          msg: (ctx.error.message || ctx.error),
+          stack: ctx.error.stack,
+        });
+      }
+      return new Response(ctx.res.body, {
+        headers: ctx.res.headers,
+        status: ctx.res.status,
+        statusText: ctx.res.statusText,
+      });
     } catch (e) {
       console.log(e);
     }
   }
 
-  public async listen(serverParams: any) {
-    const server = (serverParams.certFile || serverParams.port === 443)
-      ? Deno.listenTls(serverParams)
-      : Deno.listen(serverParams);
-    try {
-      for await (const conn of server) {
-        this.#handleRequest(conn);
-      }
-    } catch (e) {
-      console.log(e);
-      if (e.name === "NotConnected") {
-        await this.listen(serverParams);
-      }
-    }
+  public async listen(options: Deno.ServeOptions | Deno.ServeTlsOptions) {
+    this.#server = Deno.serve(options, this.#serverHandler);
   }
 }

@@ -17,7 +17,7 @@ export function logger(
       denoFile.rid,
       new TextEncoder().encode(
         `${ctx.req.method} ${ctx.url.toString()} ${
-          JSON.stringify(ctx.conn.remoteAddr)
+          JSON.stringify(ctx.info.remoteAddr)
         } ${new Date().toISOString()}\n`,
       ),
     );

@@ -18,7 +18,7 @@ const defaultRateLimitOptions: RateLimitOptions = {
   attempts: 30,
   interval: 10,
   maxTableSize: 100000, //be careful, table uses a lot of memory
-  id: (ctx: Context) => JSON.stringify(ctx.conn.remoteAddr),
+  id: (ctx: Context) => JSON.stringify(ctx.info.remoteAddr),
 };
 
 function clearMap(

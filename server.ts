@@ -264,6 +264,10 @@ export class Server {
   }
 
   public async listen(options: Deno.ServeOptions | Deno.ServeTlsOptions) {
-    this.#server = Deno.serve(options, this.#serverHandler);
+    this.#server = Deno.serve(
+      options,
+      (request: Request, info: Deno.ServeHandlerInfo) =>
+        this.#serverHandler(request, info),
+    );
   }
 }

@@ -665,8 +665,12 @@ To run your application on https (Change "yourdomain.link" to your domain):
 ```typescript
 await server.listen({
   port: 443,
-  certFile: "/etc/letsencrypt/live/yourdomain.link/fullchain.pem",
-  keyFile: "/etc/letsencrypt/live/yourdomain.link/privkey.pem",
+  cert: await Deno.readTextFile(
+    "/etc/letsencrypt/live/yourdomain.link/fullchain.pem",
+  ),
+  key: await Deno.readTextFile(
+    "/etc/letsencrypt/live/yourdomain.link/privkey.pem",
+  ),
 });
 ```
 

@@ -138,7 +138,7 @@ export type Route = {
 export class Server {
   // NOTE: This is transpiled into the constructor, therefore equivalent to this.routes = [];
   #routes: Route[] = [];
-  #server: Server;
+  #server: Deno.Server;
 
   // NOTE: Using .bind can significantly increase perf compared to arrow functions.
   public all = this.#add.bind(this, "ALL");
